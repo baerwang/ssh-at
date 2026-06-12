@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Test on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+    - uses: actions/checkout@v4.1.7
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Install dependencies (Ubuntu)
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          libwebkit2gtk-4.1-dev \
+          libgtk-3-dev \
+          libayatana-appindicator3-dev \
+          librsvg2-dev \
+          patchelf
+
+    - name: Install OpenSSH on Windows
+      if: runner.os == 'Windows'
+      shell: powershell
+      run: |
+        Add-WindowsCapability -Online -Name OpenSSH.Client*
+        Write-Host "OpenSSH Client installed"
+
+    - name: Verify ssh-keygen is available
+      shell: bash
+      run: |
+        if command -v ssh-keygen &> /dev/null; then
+          echo "✓ ssh-keygen found"
+          ssh-keygen -h 2>&1 | head -1 || true
+        else
+          echo "✗ ssh-keygen not found"
+          exit 1
+        fi
+
+    - name: Build workspace
+      run: cargo build --workspace --locked --verbose
+
+    - name: Run all tests
+      run: cargo test --workspace --locked --verbose

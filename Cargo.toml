@@ -1,0 +1,48 @@
+[workspace]
+members = [
+  "src-tauri",
+  "crates/ssh-at-core",
+  "crates/ssh-at-storage",
+]
+resolver = "2"
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = "fat"
+opt-level = "z"
+strip = true
+overflow-checks = false
+rpath = false
+
+[profile.dev]
+incremental = true
+codegen-units = 64
+opt-level = 0
+debug = true
+strip = "none"
+overflow-checks = true
+lto = false
+rpath = false
+
+[profile.fast-release]
+inherits = "release"
+codegen-units = 64
+incremental = true
+lto = false
+opt-level = 0
+debug = true
+strip = false
+
+[profile.debug-release]
+inherits = "fast-release"
+codegen-units = 1
+split-debuginfo = "unpacked"
+
+[workspace.dependencies]
+ssh-at-core = { path = "crates/ssh-at-core" }
+ssh-at-storage = { path = "crates/ssh-at-storage" }
+tauri = { version = "2.1", features = [] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.52", features = ["rt-multi-thread", "macros", "fs", "io-util", "process"] }

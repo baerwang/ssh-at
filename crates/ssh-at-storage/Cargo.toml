@@ -1,0 +1,17 @@
+[package]
+name = "ssh-at-storage"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+sqlx = { version = "0.8", features = ["sqlite", "runtime-tokio-native-tls"] }
+anyhow = "1.0"
+thiserror = "1.0"
+chrono = "0.4"
+sha2 = "0.10"
+
+[dev-dependencies]
+tempfile = "3.8"

@@ -1,0 +1,15 @@
+// SSH config file structure
+config = { SOI ~ (line? ~ ("\n" | "\r\n"))* ~ line? ~ EOI }
+line = { comment_line | host_entry | global_option }
+
+// Comment line
+comment_line = { (" " | "\t")* ~ "#" ~ (!("\n" | "\r") ~ ANY)* }
+
+// Host entry
+host_entry = { ^"Host" ~ (" " | "\t")+ ~ host_pattern }
+host_pattern = @{ (!(" " | "\t" | "\n" | "\r") ~ ANY)+ }
+
+// Global or host-specific option
+global_option = { (" " | "\t")* ~ option_key ~ (" " | "\t")+ ~ option_value }
+option_key = @{ ASCII_ALPHA ~ (ASCII_ALPHA | ASCII_DIGIT | "_" | "-")* }
+option_value = @{ (!("\n" | "\r") ~ ANY)+ }

@@ -1,0 +1,101 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish-tauri:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            args: '--target x86_64-unknown-linux-gnu'
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            args: '--target aarch64-apple-darwin'
+          - platform: macos-latest
+            target: x86_64-apple-darwin
+            args: '--target x86_64-apple-darwin'
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            args: '--target x86_64-pc-windows-msvc'
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4.1.7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4.4.0
+        with:
+          node-version: '24'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Add Rust target
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Install dependencies (ubuntu only)
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Install frontend dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - uses: tauri-apps/tauri-action@v0
+        id: tauri-build
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'SSH-AT v__VERSION__'
+          releaseBody: 'See the assets to download this version and install.'
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.args }} --features custom-protocol
+
+      - name: Generate SHA256 checksums
+        shell: bash
+        run: |
+          if [[ "${{ matrix.platform }}" == "ubuntu-22.04" ]]; then
+            cd target/${{ matrix.target }}/release/bundle/appimage
+            for file in *.AppImage; do
+              sha256sum "$file" > "${file}-sha256sum.txt"
+            done
+            cd ../deb
+            for file in *.deb; do
+              sha256sum "$file" > "${file}-sha256sum.txt"
+            done
+          elif [[ "${{ matrix.platform }}" == "macos-latest" ]]; then
+            cd target/${{ matrix.target }}/release/bundle/dmg
+            for file in *.dmg; do
+              shasum -a 256 "$file" > "${file}-sha256sum.txt"
+            done
+          elif [[ "${{ matrix.platform }}" == "windows-latest" ]]; then
+            cd target/${{ matrix.target }}/release/bundle/msi
+            for file in *.msi; do
+              sha256sum "$file" > "${file}-sha256sum.txt"
+            done
+          fi
+
+      - name: Upload checksums to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            target/${{ matrix.target }}/release/bundle/**/*-sha256sum.txt
+          tag_name: ${{ github.ref_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

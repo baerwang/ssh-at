@@ -1,0 +1,28 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Rounded rectangle background -->
+  <rect width="512" height="512" rx="80" fill="url(#grad)"/>
+
+  <!-- Terminal icon (simplified) -->
+  <g transform="translate(128, 128)">
+    <!-- Prompt symbol > -->
+    <path d="M 40 80 L 120 140 L 40 200"
+          stroke="white"
+          stroke-width="24"
+          fill="none"
+          stroke-linecap="round"
+          stroke-linejoin="round"/>
+
+    <!-- Underscore _ -->
+    <line x1="140" y1="200" x2="240" y2="200"
+          stroke="white"
+          stroke-width="24"
+          stroke-linecap="round"/>
+  </g>
+</svg>
