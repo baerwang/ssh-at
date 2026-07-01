@@ -116,9 +116,9 @@ fn validate_identity_file(identity_file: &Option<std::path::PathBuf>) -> Result<
         return Err(ValidationError::IdentityFileEmpty);
     }
 
-    let expanded_path = if trimmed.starts_with("~/") {
-        if let Ok(home) = std::env::var("HOME") {
-            std::path::PathBuf::from(home).join(&trimmed[2..])
+    let expanded_path = if let Some(stripped) = trimmed.strip_prefix("~/") {
+        if let Some(home) = dirs::home_dir() {
+            home.join(stripped)
         } else {
             return Err(ValidationError::IdentityFileExpandFailed);
         }
@@ -148,7 +148,7 @@ fn validate_entry(entry: &HostEntry) -> Result<(), ValidationError> {
     }
 
     // Validate user
-    if entry.user.as_ref().map_or(true, |u| u.trim().is_empty()) {
+    if entry.user.as_ref().is_none_or(|u| u.trim().is_empty()) {
         return Err(ValidationError::UserRequired);
     }
 
@@ -182,8 +182,9 @@ pub async fn load_ssh_config() -> Result<SshConfig, String> {
             .spawn(|| {
                 eprintln!("[COMMAND] In 64MB stack thread");
 
-                let home = std::env::var("HOME").map_err(|e| format!("HOME not set: {}", e))?;
-                let config_path = std::path::PathBuf::from(home).join(".ssh/config");
+                let home = dirs::home_dir()
+                    .ok_or("Failed to get home directory")?;
+                let config_path = home.join(".ssh/config");
 
                 if !config_path.exists() {
                     return Ok(SshConfig {

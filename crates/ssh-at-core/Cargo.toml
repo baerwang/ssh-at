@@ -1,6 +1,6 @@
 [package]
 name = "ssh-at-core"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 
 [dependencies]
@@ -13,6 +13,7 @@ anyhow = "1.0"
 thiserror = "1.0"
 chrono = "0.4"
 ssh-at-storage = { path = "../ssh-at-storage" }
+dirs = "6.0.0"
 
 [dev-dependencies]
 tempfile = "3.8"

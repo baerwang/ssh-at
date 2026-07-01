@@ -3,7 +3,7 @@ use super::generator::get_fingerprint;
 use crate::config::load_config;
 use anyhow::Result;
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tokio::fs;
 
 /// Scan SSH keys (synchronous version, prioritizes default keys to avoid config parsing stack overflow)
@@ -129,7 +129,7 @@ fn scan_default_keys_sync() -> Result<Vec<KeyInfo>> {
                     let path = entry.path();
 
                     // Skip directories and .pub files
-                    if path.is_dir() || path.extension().map_or(false, |ext| ext == "pub") {
+                    if path.is_dir() || path.extension().is_some_and(|ext| ext == "pub") {
                         continue;
                     }
 
@@ -168,7 +168,7 @@ async fn scan_default_keys() -> Result<Vec<KeyInfo>> {
                     let path = entry.path();
 
                     // Skip directories and .pub files
-                    if path.is_dir() || path.extension().map_or(false, |ext| ext == "pub") {
+                    if path.is_dir() || path.extension().is_some_and(|ext| ext == "pub") {
                         continue;
                     }
 
@@ -188,24 +188,27 @@ async fn scan_default_keys() -> Result<Vec<KeyInfo>> {
 }
 
 /// Expand ~/ to actual home directory path
-fn expand_tilde_path(path: &PathBuf) -> PathBuf {
+fn expand_tilde_path(path: &Path) -> PathBuf {
     if let Some(path_str) = path.to_str() {
-        if path_str.starts_with("~/") {
-            let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-            return PathBuf::from(home).join(&path_str[2..]);
+        if let Some(stripped) = path_str.strip_prefix("~/") {
+            if let Some(home) = dirs::home_dir() {
+                return home.join(stripped);
+            }
         }
     }
-    path.clone()
+    path.to_path_buf()
 }
 
 fn get_ssh_dir() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-    PathBuf::from(home).join(".ssh")
+    dirs::home_dir()
+        .map(|h| h.join(".ssh"))
+        .unwrap_or_else(|| PathBuf::from(".ssh"))
 }
 
 fn get_ssh_at_dir() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-    PathBuf::from(home).join(".ssh-at").join("creds")
+    dirs::home_dir()
+        .map(|h| h.join(".ssh-at").join("creds"))
+        .unwrap_or_else(|| PathBuf::from(".ssh-at/creds"))
 }
 
 fn is_private_key(content: &str) -> bool {

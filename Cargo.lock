@@ -4444,7 +4444,7 @@ dependencies = [
 
 [[package]]
 name = "ssh-at"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "dirs",
  "image",
@@ -4463,11 +4463,12 @@ dependencies = [
 
 [[package]]
 name = "ssh-at-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "chrono",
  "criterion",
+ "dirs",
  "pest",
  "pest_derive",
  "serde",
@@ -4480,10 +4481,11 @@ dependencies = [
 
 [[package]]
 name = "ssh-at-storage"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "chrono",
+ "dirs",
  "serde",
  "serde_json",
  "sha2",

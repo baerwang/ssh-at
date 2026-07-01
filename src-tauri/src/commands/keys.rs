@@ -63,8 +63,9 @@ pub async fn generate_ssh_key(
     }
 
     // Create ~/.ssh-at/creds/ directory if it doesn't exist
-    let home = std::env::var("HOME").map_err(|_| "HOME environment variable not set")?;
-    let creds_dir = std::path::PathBuf::from(home).join(".ssh-at").join("creds");
+    let home = dirs::home_dir()
+        .ok_or("Failed to get home directory")?;
+    let creds_dir = home.join(".ssh-at").join("creds");
 
     if !creds_dir.exists() {
         std::fs::create_dir_all(&creds_dir)

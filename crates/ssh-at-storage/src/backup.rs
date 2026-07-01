@@ -33,14 +33,16 @@ impl Default for AppSettings {
 
 /// Get backup directory
 fn get_backup_dir() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-    PathBuf::from(home).join(".ssh-at").join("backups")
+    dirs::home_dir()
+        .map(|h| h.join(".ssh-at").join("backups"))
+        .unwrap_or_else(|| PathBuf::from(".ssh-at/backups"))
 }
 
 /// Load settings from ~/.ssh-at/settings.json
 async fn load_settings() -> AppSettings {
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-    let settings_path = PathBuf::from(home).join(".ssh-at").join("settings.json");
+    let settings_path = dirs::home_dir()
+        .map(|h| h.join(".ssh-at").join("settings.json"))
+        .unwrap_or_else(|| PathBuf::from(".ssh-at/settings.json"));
 
     if let Ok(content) = fs::read_to_string(&settings_path).await {
         if let Ok(settings) = serde_json::from_str::<AppSettings>(&content) {
@@ -121,7 +123,7 @@ pub async fn list_backups() -> Result<Vec<BackupInfo>> {
     while let Some(entry) = entries.next_entry().await? {
         let path = entry.path();
 
-        if path.extension().map_or(false, |ext| ext == "config") {
+        if path.extension().is_some_and(|ext| ext == "config") {
             if let Ok(content) = fs::read_to_string(&path).await {
                 let metadata = fs::metadata(&path).await?;
                 let timestamp = path.file_stem()
@@ -163,8 +165,9 @@ pub async fn restore_backup(backup_id: i64) -> Result<()> {
     // Read backup content first before any operations
     let backup_content = fs::read_to_string(&backup.file_path).await?;
 
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-    let config_path = PathBuf::from(home).join(".ssh").join("config");
+    let config_path = dirs::home_dir()
+        .map(|h| h.join(".ssh").join("config"))
+        .unwrap_or_else(|| PathBuf::from(".ssh/config"));
 
     // Create backup of current config before restoring
     if config_path.exists() {
@@ -238,6 +241,7 @@ mod tests {
     #[tokio::test]
     async fn test_create_backup() {
         let (_temp_dir, _guard) = setup_test_env();
+        drop(_guard); // Drop guard before await
 
         let config_content = "Host test\n    HostName example.com\n    User admin\n";
         let backup = create_backup(config_content).await.unwrap();
@@ -251,6 +255,7 @@ mod tests {
     #[tokio::test]
     async fn test_list_backups_empty() {
         let (_temp_dir, _guard) = setup_test_env();
+        drop(_guard); // Drop guard before await
 
         let backups = list_backups().await.unwrap();
         assert_eq!(backups.len(), 0);
@@ -259,6 +264,7 @@ mod tests {
     #[tokio::test]
     async fn test_list_backups_multiple() {
         let (_temp_dir, _guard) = setup_test_env();
+        drop(_guard); // Drop guard before await
 
         let backup_dir = get_backup_dir();
         fs::create_dir_all(&backup_dir).await.unwrap();
@@ -281,6 +287,7 @@ mod tests {
     #[tokio::test]
     async fn test_backup_hash_uniqueness() {
         let (_temp_dir, _guard) = setup_test_env();
+        drop(_guard); // Drop guard before await
 
         let backup_dir = get_backup_dir();
         fs::create_dir_all(&backup_dir).await.unwrap();

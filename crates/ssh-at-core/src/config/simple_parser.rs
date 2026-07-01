@@ -89,11 +89,8 @@ pub fn parse_ssh_config(content: &str) -> Result<SshConfig> {
 
             visited_files.insert(include_path.clone());
 
-            match std::fs::read_to_string(&include_path) {
-                Ok(include_content) => {
-                    files_to_process.push((include_content, depth + 1));
-                }
-                Err(_) => {}
+            if let Ok(include_content) = std::fs::read_to_string(&include_path) {
+                files_to_process.push((include_content, depth + 1));
             }
         }
     }
@@ -113,9 +110,9 @@ pub fn parse_ssh_config(content: &str) -> Result<SshConfig> {
 }
 
 fn expand_tilde(path: &str) -> PathBuf {
-    if path.starts_with("~/") {
-        if let Ok(home) = std::env::var("HOME") {
-            return PathBuf::from(home).join(&path[2..]);
+    if let Some(stripped) = path.strip_prefix("~/") {
+        if let Some(home) = dirs::home_dir() {
+            return home.join(stripped);
         }
     }
     PathBuf::from(path)

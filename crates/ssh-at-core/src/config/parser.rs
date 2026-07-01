@@ -132,9 +132,9 @@ pub fn parse_ssh_config(content: &str) -> Result<SshConfig> {
 
 /// Expand tilde (~) in file paths
 fn expand_tilde(path: &str) -> PathBuf {
-    if path.starts_with("~/") {
-        if let Ok(home) = std::env::var("HOME") {
-            return PathBuf::from(home).join(&path[2..]);
+    if let Some(stripped) = path.strip_prefix("~/") {
+        if let Some(home) = dirs::home_dir() {
+            return home.join(stripped);
         }
     }
     PathBuf::from(path)

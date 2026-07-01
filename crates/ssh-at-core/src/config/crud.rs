@@ -11,18 +11,20 @@ use ssh_at_storage::backup::create_backup;
 
 /// Get the SSH config file path
 fn get_ssh_config_path() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-    PathBuf::from(home).join(".ssh").join("config")
+    dirs::home_dir()
+        .map(|h| h.join(".ssh").join("config"))
+        .unwrap_or_else(|| PathBuf::from(".ssh/config"))
 }
 
 #[cfg(test)]
 fn get_ssh_config_path_with_home(home_override: Option<PathBuf>) -> PathBuf {
-    let home = if let Some(h) = home_override {
-        h.to_string_lossy().to_string()
+    if let Some(h) = home_override {
+        h.join(".ssh").join("config")
     } else {
-        std::env::var("HOME").unwrap_or_else(|_| ".".to_string())
-    };
-    PathBuf::from(home).join(".ssh").join("config")
+        dirs::home_dir()
+            .map(|h| h.join(".ssh").join("config"))
+            .unwrap_or_else(|| PathBuf::from(".ssh/config"))
+    }
 }
 
 /// Load SSH config from path (for testing)
@@ -297,8 +299,8 @@ pub async fn search_hosts(query: &str) -> Result<Vec<HostEntry>> {
         let results = config.hosts.into_iter()
             .filter(|h| {
                 h.host.to_lowercase().contains(&query_lower) ||
-                h.hostname.as_ref().map_or(false, |hn| hn.to_lowercase().contains(&query_lower)) ||
-                h.user.as_ref().map_or(false, |u| u.to_lowercase().contains(&query_lower))
+                h.hostname.as_ref().is_some_and(|hn| hn.to_lowercase().contains(&query_lower)) ||
+                h.user.as_ref().is_some_and(|u| u.to_lowercase().contains(&query_lower))
             })
             .collect();
 
