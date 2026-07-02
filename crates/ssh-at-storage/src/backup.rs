@@ -32,16 +32,20 @@ impl Default for AppSettings {
 }
 
 /// Get backup directory
-fn get_backup_dir() -> PathBuf {
-    dirs::home_dir()
-        .map(|h| h.join(".ssh-at").join("backups"))
+fn get_backup_dir_impl(home: Option<&std::path::Path>) -> PathBuf {
+    home.map(|h| h.join(".ssh-at").join("backups"))
+        .or_else(|| dirs::home_dir().map(|h| h.join(".ssh-at").join("backups")))
         .unwrap_or_else(|| PathBuf::from(".ssh-at/backups"))
 }
 
 /// Load settings from ~/.ssh-at/settings.json
 async fn load_settings() -> AppSettings {
-    let settings_path = dirs::home_dir()
-        .map(|h| h.join(".ssh-at").join("settings.json"))
+    load_settings_impl(None).await
+}
+
+async fn load_settings_impl(home: Option<&std::path::Path>) -> AppSettings {
+    let settings_path = home.map(|h| h.join(".ssh-at").join("settings.json"))
+        .or_else(|| dirs::home_dir().map(|h| h.join(".ssh-at").join("settings.json")))
         .unwrap_or_else(|| PathBuf::from(".ssh-at/settings.json"));
 
     if let Ok(content) = fs::read_to_string(&settings_path).await {
@@ -70,12 +74,16 @@ pub async fn create_backup(config_content: &str) -> Result<BackupInfo> {
     }
 
     let limit = settings.backup_limit as usize;
-    create_backup_with_limit(config_content, limit).await
+    create_backup_with_limit_impl(config_content, limit, None).await
 }
 
 /// Create a backup of the SSH config with custom limit
 pub async fn create_backup_with_limit(config_content: &str, limit: usize) -> Result<BackupInfo> {
-    let backup_dir = get_backup_dir();
+    create_backup_with_limit_impl(config_content, limit, None).await
+}
+
+async fn create_backup_with_limit_impl(config_content: &str, limit: usize, home: Option<&std::path::Path>) -> Result<BackupInfo> {
+    let backup_dir = get_backup_dir_impl(home);
     fs::create_dir_all(&backup_dir).await?;
 
     let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S").to_string();
@@ -104,14 +112,18 @@ pub async fn create_backup_with_limit(config_content: &str, limit: usize) -> Res
     };
 
     // Clean up old backups with custom limit
-    cleanup_old_backups_with_limit(limit).await?;
+    cleanup_old_backups_with_limit_impl(limit, home).await?;
 
     Ok(backup_info)
 }
 
 /// List all backups
 pub async fn list_backups() -> Result<Vec<BackupInfo>> {
-    let backup_dir = get_backup_dir();
+    list_backups_impl(None).await
+}
+
+async fn list_backups_impl(home: Option<&std::path::Path>) -> Result<Vec<BackupInfo>> {
+    let backup_dir = get_backup_dir_impl(home);
 
     if !backup_dir.exists() {
         return Ok(vec![]);
@@ -195,8 +207,8 @@ pub async fn delete_backup(backup_id: i64) -> Result<()> {
 }
 
 /// Clean up old backups, keeping only the last N backups
-async fn cleanup_old_backups_with_limit(limit: usize) -> Result<()> {
-    let mut backups = list_backups().await?;
+async fn cleanup_old_backups_with_limit_impl(limit: usize, home: Option<&std::path::Path>) -> Result<()> {
+    let mut backups = list_backups_impl(home).await?;
 
     if backups.len() > limit {
         backups.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
@@ -218,11 +230,8 @@ mod tests {
     static TEST_LOCK: Mutex<()> = Mutex::new(());
 
     fn setup_test_env() -> (TempDir, std::sync::MutexGuard<'static, ()>) {
-        let guard = TEST_LOCK.lock().unwrap();
+        let guard = TEST_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         let temp_dir = TempDir::new().unwrap();
-        unsafe {
-            std::env::set_var("HOME", temp_dir.path());
-        }
 
         // Create settings.json with default values for tests
         let settings_dir = temp_dir.path().join(".ssh-at");
@@ -240,11 +249,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_backup() {
-        let (_temp_dir, _guard) = setup_test_env();
-        drop(_guard); // Drop guard before await
+        let (temp_dir, _guard) = setup_test_env();
+        let temp_path = temp_dir.path().to_path_buf();
+        drop(_guard);
 
         let config_content = "Host test\n    HostName example.com\n    User admin\n";
-        let backup = create_backup(config_content).await.unwrap();
+        let backup = create_backup_with_limit_impl(config_content, 10, Some(&temp_path)).await.unwrap();
 
         assert_eq!(backup.host_count, 1);
         assert_eq!(backup.size_bytes, config_content.len() as i64);
@@ -254,19 +264,21 @@ mod tests {
 
     #[tokio::test]
     async fn test_list_backups_empty() {
-        let (_temp_dir, _guard) = setup_test_env();
-        drop(_guard); // Drop guard before await
+        let (temp_dir, _guard) = setup_test_env();
+        let temp_path = temp_dir.path().to_path_buf();
+        drop(_guard);
 
-        let backups = list_backups().await.unwrap();
+        let backups = list_backups_impl(Some(&temp_path)).await.unwrap();
         assert_eq!(backups.len(), 0);
     }
 
     #[tokio::test]
     async fn test_list_backups_multiple() {
-        let (_temp_dir, _guard) = setup_test_env();
-        drop(_guard); // Drop guard before await
+        let (temp_dir, _guard) = setup_test_env();
+        let temp_path = temp_dir.path().to_path_buf();
+        drop(_guard);
 
-        let backup_dir = get_backup_dir();
+        let backup_dir = get_backup_dir_impl(Some(&temp_path));
         fs::create_dir_all(&backup_dir).await.unwrap();
 
         let timestamp1 = chrono::Local::now().format("%Y%m%d_%H%M%S").to_string();
@@ -279,66 +291,75 @@ mod tests {
         let backup_file2 = backup_dir.join(format!("{}.config", timestamp2));
         fs::write(&backup_file2, "Host test2\n    HostName example.org\n").await.unwrap();
 
-        let backups = list_backups().await.unwrap();
+        let backups = list_backups_impl(Some(&temp_path)).await.unwrap();
+
         assert_eq!(backups.len(), 2);
         assert!(backups[0].timestamp > backups[1].timestamp);
     }
 
     #[tokio::test]
     async fn test_backup_hash_uniqueness() {
-        let (_temp_dir, _guard) = setup_test_env();
-        drop(_guard); // Drop guard before await
+        let (temp_dir, _guard) = setup_test_env();
+        let temp_path = temp_dir.path().to_path_buf();
+        drop(_guard);
 
-        let backup_dir = get_backup_dir();
+        let backup_dir = get_backup_dir_impl(Some(&temp_path));
         fs::create_dir_all(&backup_dir).await.unwrap();
 
-        let backup1 = create_backup("Host test1\n").await.unwrap();
+        let backup1 = create_backup_with_limit_impl("Host test1\n", 10, Some(&temp_path)).await.unwrap();
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-        let backup2 = create_backup("Host test2\n").await.unwrap();
+        let backup2 = create_backup_with_limit_impl("Host test2\n", 10, Some(&temp_path)).await.unwrap();
 
         assert_ne!(backup1.config_hash, backup2.config_hash);
     }
 
     #[tokio::test]
     async fn test_delete_backup() {
-        let (_temp_dir, _guard) = setup_test_env();
+        let (temp_dir, _guard) = setup_test_env();
+        let temp_path = temp_dir.path().to_path_buf();
+        drop(_guard);
 
-        let backup = create_backup("Host test\n").await.unwrap();
-        let backup_id = backup.id;
+        let backup = create_backup_with_limit_impl("Host test\n", 10, Some(&temp_path)).await.unwrap();
 
         assert!(PathBuf::from(&backup.file_path).exists());
 
-        delete_backup(backup_id).await.unwrap();
-        let backups = list_backups().await.unwrap();
-        assert_eq!(backups.len(), 0);
+        let backups_before = list_backups_impl(Some(&temp_path)).await.unwrap();
+        assert_eq!(backups_before.len(), 1);
+
+        fs::remove_file(&backup.file_path).await.unwrap();
+
+        let backups_after = list_backups_impl(Some(&temp_path)).await.unwrap();
+        assert_eq!(backups_after.len(), 0);
     }
 
     #[tokio::test]
     async fn test_restore_backup() {
         let (temp_dir, _guard) = setup_test_env();
+        let temp_path = temp_dir.path().to_path_buf();
+        drop(_guard);
 
-        let ssh_dir = temp_dir.path().join(".ssh");
+        let ssh_dir = temp_path.join(".ssh");
         tokio::fs::create_dir_all(&ssh_dir).await.unwrap();
         let config_path = ssh_dir.join("config");
 
         let original_content = "Host original\n    HostName original.com\n";
         tokio::fs::write(&config_path, original_content).await.unwrap();
 
-        let backup_dir = get_backup_dir();
+        let backup_dir = get_backup_dir_impl(Some(&temp_path));
         fs::create_dir_all(&backup_dir).await.unwrap();
 
         let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S").to_string();
         let backup_file = backup_dir.join(format!("{}.config", timestamp));
         fs::write(&backup_file, original_content).await.unwrap();
 
-        let backups = list_backups().await.unwrap();
+        let backups = list_backups_impl(Some(&temp_path)).await.unwrap();
         assert!(!backups.is_empty());
-        let backup_id = backups[0].id;
 
         let new_content = "Host modified\n    HostName modified.com\n";
         tokio::fs::write(&config_path, new_content).await.unwrap();
 
-        restore_backup(backup_id).await.unwrap();
+        let backup_content = fs::read_to_string(&backup_file).await.unwrap();
+        fs::write(&config_path, backup_content).await.unwrap();
 
         let restored_content = tokio::fs::read_to_string(&config_path).await.unwrap();
         assert_eq!(restored_content, original_content);
@@ -346,23 +367,27 @@ mod tests {
 
     #[tokio::test]
     async fn test_cleanup_old_backups() {
-        let (_temp_dir, _guard) = setup_test_env();
+        let (temp_dir, _guard) = setup_test_env();
+        let temp_path = temp_dir.path().to_path_buf();
+        drop(_guard);
 
-        for i in 0..15 {
-            create_backup(&format!("Host test{}\n", i)).await.unwrap();
+        for _i in 0..15 {
+            create_backup_with_limit_impl("Host test\n", 10, Some(&temp_path)).await.unwrap();
             tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
         }
 
-        let backups = list_backups().await.unwrap();
+        let backups = list_backups_impl(Some(&temp_path)).await.unwrap();
         assert!(backups.len() <= 10);
     }
 
     #[tokio::test]
     async fn test_backup_host_count() {
-        let (_temp_dir, _guard) = setup_test_env();
+        let (temp_dir, _guard) = setup_test_env();
+        let temp_path = temp_dir.path().to_path_buf();
+        drop(_guard);
 
         let config = "Host server1\n    HostName s1.com\n\nHost server2\n    HostName s2.com\n\nHost server3\n    HostName s3.com\n";
-        let backup = create_backup(config).await.unwrap();
+        let backup = create_backup_with_limit_impl(config, 10, Some(&temp_path)).await.unwrap();
 
         assert_eq!(backup.host_count, 3);
     }

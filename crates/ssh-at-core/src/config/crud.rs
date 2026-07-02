@@ -610,7 +610,7 @@ mod tests {
 
         let query_lower = "prod".to_lowercase();
         let results: Vec<_> = config.hosts.iter()
-            .filter(|h| h.hostname.as_ref().map_or(false, |hn| hn.to_lowercase().contains(&query_lower)))
+            .filter(|h| h.hostname.as_ref().is_some_and(|hn| hn.to_lowercase().contains(&query_lower)))
             .collect();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].host, "server1");
@@ -631,7 +631,7 @@ mod tests {
 
         let query_lower = "admin".to_lowercase();
         let results: Vec<_> = config.hosts.iter()
-            .filter(|h| h.user.as_ref().map_or(false, |u| u.to_lowercase().contains(&query_lower)))
+            .filter(|h| h.user.as_ref().is_some_and(|u| u.to_lowercase().contains(&query_lower)))
             .collect();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].host, "server1");
